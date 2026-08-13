@@ -1,94 +1,84 @@
-"""
-Streamlit UI for the Agentic AI IT Support Resolution System.
-
-This file only handles PRESENTATION. All the actual multi-agent logic
-lives in graph/workflow.py and the agents/ folder - this keeps concerns
-cleanly separated.
-"""
+"""Streamlit interface for the Agentic AI IT Support system."""
 
 import streamlit as st
 from graph.workflow import run_ticket
 
-st.set_page_config(page_title="AI IT Support Resolution System", page_icon="🛠️", layout="wide")
+st.set_page_config(
+    page_title="AI IT Support Resolution System",
+    page_icon="🛠️",
+    layout="wide",
+)
 
 st.title("AI IT Support Resolution System")
-st.caption("Multi-Agent IT Support powered by LangChain and LangGraph")
+st.caption("Multi-stage IT Support powered by LangChain, LangGraph and local Ollama models")
 
 ticket_text = st.text_area(
     "Describe your IT issue",
-    placeholder="My VPN stopped working after I changed my password.",
-    height=120,
+    value="My VPN stopped working after I changed my password.",
+    height=150,
 )
 
-run_clicked = st.button("Analyze Ticket", type="primary")
-
-if run_clicked:
+if st.button("Analyze Ticket", type="primary"):
     if not ticket_text.strip():
-        st.warning("Please enter a ticket description first.")
+        st.warning("Please describe the IT issue first.")
     else:
-        with st.spinner("Running Triage → Knowledge Retrieval → Resolution → Review..."):
-            try:
+        try:
+            with st.spinner(
+                "Running Triage → Knowledge Retrieval → Resolution → Review → Escalation..."
+            ):
                 result = run_ticket(ticket_text)
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-                st.stop()
 
-        # ---------- Ticket Analysis ----------
-        st.subheader("Ticket Analysis")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Category", result["category"])
-        col2.metric("Severity", result["severity"])
-        col3.metric("Security Related", "Yes" if result["is_security_related"] else "No")
+            st.success("Ticket analysis completed.")
 
-        st.write(f"**Intent:** {result['intent']}")
-        if result["missing_information"]:
-            st.write(f"**Missing Information:** {', '.join(result['missing_information'])}")
-        else:
-            st.write("**Missing Information:** None")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Category", result.get("category", "-"))
+            col2.metric("Severity", result.get("severity", "-"))
+            col3.metric(
+                "Human escalation",
+                "Yes" if result.get("requires_human") else "No",
+            )
 
-        # ---------- Knowledge Retrieved ----------
-        st.subheader("Knowledge Retrieved")
-        if result["retrieved_documents"]:
-            st.write("**Source documents:** " + ", ".join(result["retrieved_documents"]))
-            with st.expander("View retrieved knowledge base content"):
-                for i, chunk in enumerate(result["retrieved_content"], start=1):
-                    st.markdown(f"**Chunk {i}:**")
-                    st.text(chunk)
-        else:
-            st.warning("No relevant knowledge base documents were found.")
+            st.subheader("Triage")
+            st.write("**Intent:**", result.get("intent", "-"))
+            st.write(
+                "**Security related:**",
+                "Yes" if result.get("is_security_related") else "No",
+            )
+            missing = result.get("missing_information", [])
+            st.write("**Missing information:**", ", ".join(missing) if missing else "None")
 
-        # ---------- Proposed Resolution ----------
-        st.subheader("Proposed Resolution")
-        st.markdown(result["proposed_resolution"])
-
-        # ---------- Reviewer Result ----------
-        st.subheader("Reviewer Result")
-        rcol1, rcol2 = st.columns(2)
-        with rcol1:
-            if result["review_status"] == "APPROVED":
-                st.success(f"Status: {result['review_status']}")
+            st.subheader("Knowledge Retrieval")
+            docs = result.get("retrieved_documents", [])
+            if docs:
+                for doc in docs:
+                    st.write(f"- {doc}")
             else:
-                st.error(f"Status: {result['review_status']}")
-        with rcol2:
-            st.metric("Confidence", f"{result['confidence']:.2f}")
-        st.write(f"**Reason:** {result['review_reason']}")
+                st.write("No documents retrieved.")
 
-        # ---------- Escalation Status ----------
-        st.subheader("Escalation Status")
-        if result["requires_human"]:
-            st.error("HUMAN APPROVAL REQUIRED")
-            st.write(f"**Reason:** {result['escalation_reason']}")
-        else:
-            st.success("No escalation needed - safe to return automatically.")
+            st.subheader("Proposed Resolution")
+            st.write(result.get("proposed_resolution", "No resolution generated."))
 
-        # ---------- Final Response ----------
-        st.subheader("Final Response")
-        if result["requires_human"]:
-            st.warning(result["final_response"])
-        else:
-            st.info(result["final_response"])
+            st.subheader("Review")
+            st.write("**Status:**", result.get("review_status", "-"))
+            st.write("**Reason:**", result.get("review_reason", "-"))
+            st.write("**Confidence:**", f"{result.get('confidence', 0.0):.2f}")
 
-        # ---------- Execution Trace ----------
-        st.subheader("Execution Trace")
-        trace_str = "\n↓\n".join(result["execution_log"])
-        st.code(trace_str, language=None)
+            st.subheader("Escalation")
+            st.write("**Reason:**", result.get("escalation_reason", "-"))
+
+            st.subheader("Final Response")
+            st.info(result.get("final_response", "No final response."))
+
+            with st.expander("Execution Trace"):
+                for item in result.get("execution_log", []):
+                    st.write(f"- {item}")
+
+        except Exception as exc:
+            message = str(exc)
+            if "11434" in message or "Connection refused" in message or "Failed to establish" in message:
+                st.error(
+                    "Cannot connect to Ollama. Start it with `ollama serve`, then make sure "
+                    "`llama3.2:3b` and `nomic-embed-text` are installed."
+                )
+            else:
+                st.error(f"Something went wrong: {message}")
