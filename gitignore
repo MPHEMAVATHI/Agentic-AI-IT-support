@@ -1,20 +1,8 @@
-gitignore
-# Environment variables
-.env
-
-# Virtual environment
+.venv/
 venv/
-
-# Python cache
 __pycache__/
-*.pyc
-
-# FAISS index (regenerated automatically, no need to commit)
+*.py[cod]
+.pytest_cache/
+.env
 faiss_index/
-
-# VS Code settings
-.vscode/
-
-# OS files
 .DS_Store
-Thumbs.db
